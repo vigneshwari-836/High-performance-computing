@@ -1,0 +1,152 @@
+[?1034h[23bcs096@mepcolinux ex9]$cat trap.c
+#include <stdio.h>
+#include <omp.h>
+/* The function to integrate: f(x) = x^2 */ double f(double x) {
+    return x * x;
+}
+int main() {
+    double a, b;
+    int n;
+    /* Get input from the user */
+    printf("Enter the left endpoint (a): ");
+    scanf("%lf", &a);
+    printf("Enter the right endpoint (b): ");
+    scanf("%lf", &b);
+    printf("Enter the number of trapezoids (n): ");
+    scanf("%d", &n);
+    double h = (b - a) / n;
+
+    // --- METHOD 1: REDUCTION ---
+    double total_sum_red = (f(a) + f(b)) / 2.0;
+    int i;
+    #pragma omp parallel for reduction(+:total_sum_red)
+    for ( i = 1; i < n; i++) {
+        total_sum_red += f(a + i * h);
+    }
+    printf("\nResult (Reduction): %f\n", total_sum_red * h);
+    // --- METHOD 2: CRITICAL ---
+    double total_sum_crit = (f(a) + f(b)) / 2.0;
+    #pragma omp parallel
+    {
+        double local_sum = 0.0;
+        #pragma omp for
+        for ( i = 1; i < n; i++) {
+            local_sum += f(a + i * h);
+        }
+
+        /* Ensures only one thread updates the global variable at a time */
+        #pragma omp critical
+        {
+            total_sum_crit += local_sum;
+        }
+    }
+    printf("Result (Critical): %f\n", total_sum_crit * h);
+    return 0;
+}
+[23bcs096@mepcolinux ex9]$./trap
+bash: ./trap: No such file or directory
+[23bcs096@mepcolinux ex9]$ls
+core.83002  core.87366  core.87536  core.87598  core.87621  ex9.prn  mat  matrix.c  sad  saddle.c  t  trap.c
+[23bcs096@mepcolinux ex9]$./t
+Enter the left endpoint (a): 3
+Enter the right endpoint (b): 6
+Enter the number of trapezoids (n): 3
+
+Result (Reduction): 63.500000
+Result (Critical): 63.500000
+[23bcs096@mepcolinux ex9]$cat matrix.c
+#include <stdio.h>
+#include <omp.h>
+#define ROWS 3
+#define COLS 3
+int main() {
+    int matrix[ROWS][COLS];
+    int k, total_sum = 0;
+    int i,j;
+    // Initialize matrix with some values
+    for ( i = 0; i < ROWS; i++)
+    {
+        for ( j = 0; j < COLS; j++)
+        {
+            matrix[i][j] = i + j;
+            printf("%d ",matrix[i][j]);
+
+        }
+        printf("\n");
+    }
+
+    printf("Enter divisor k: ");
+    scanf("%d", &k);
+    // Parallelize the outer loop
+    #pragma omp parallel for reduction(+:total_sum) collapse(2)
+    for ( i = 0; i < ROWS; i++) {
+        for ( j = 0; j < COLS; j++) {
+            if (matrix[i][j] % k == 0) {
+                total_sum += matrix[i][j];
+            }
+        }
+    }
+    printf("Total sum of elements divisible by %d: %d\n", k, total_sum);
+    return 0;
+}
+
+[23bcs096@mepcolinux ex9]$./mat
+0 1 2
+1 2 3
+2 3 4
+Enter divisor k: 3
+Total sum of elements divisible by 3: 6
+[23bcs096@mepcolinux ex9]$cat saddle.c
+#include <stdio.h>
+#include <omp.h>
+//#define SIZE 10
+int main() {
+   int SIZE;
+   printf("Enter size:");
+   scanf("%d",&SIZE);
+    int mat[SIZE][SIZE];
+    int row_min[SIZE], col_max[SIZE];
+    int i=0,j=0;
+    int saddle_count = 0;
+    // 1. Initialize matrix
+    for ( i = 0; i < SIZE; i++)
+        for ( j = 0; j < SIZE; j++)
+            scanf("%d",&mat[i][j] );
+    // 2. Find Minimum of each Row
+    #pragma omp parallel for
+    for ( i = 0; i < SIZE; i++) {
+        int min = mat[i][0];
+        for ( j = 1; j < SIZE; j++) {
+            if (mat[i][j] < min) min = mat[i][j];
+        }
+        row_min[i] = min;
+    }
+    // 3. Find Maximum of each Column
+    #pragma omp parallel for
+    for ( j = 0; j < SIZE; j++) {
+        int max = mat[0][j];
+        for ( i = 1; i < SIZE; i++) {
+            if (mat[i][j] > max) max = mat[i][j];
+        }
+        col_max[j] = max;
+    }
+    // 4. Count Saddle Points using Reduction
+    #pragma omp parallel for reduction(+:saddle_count) collapse(2)
+    for ( i = 0; i < SIZE; i++) {
+        for ( j = 0; j < SIZE; j++) {
+            if (mat[i][j] == row_min[i] && mat[i][j] == col_max[j]) {
+                saddle_count++;
+            }
+        }
+    }
+    printf("Number of Saddle Points: %d\n", saddle_count);
+    return 0;
+}
+[23bcs096@mepcolinux ex9]$ls
+core.83002  core.87366  core.87536  core.87598  core.87621  ex9.prn  mat  matrix.c  sad  saddle.c  t  trap.c
+[23bcs096@mepcolinux ex9]$./sad
+Enter size:3
+1 2 3
+2 3 4
+1 2 3
+Number of Saddle Points: 1
