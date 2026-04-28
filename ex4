@@ -1,0 +1,133 @@
+[?1034h[23bcs096@mepcolinux ex4a]$cat pgrm.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <mpi.h>
+typedef struct Student
+{
+    char name[20];
+    int roll_no;
+    float total_marks;
+    char grade;
+} Student;
+int main()
+{
+    int my_rank, comm_sz;
+    int total_students;
+    MPI_Init(NULL, NULL);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+    if (my_rank == 0)
+    {
+        FILE* fp = fopen("in.txt", "r");
+        if (fp == NULL)
+        {
+            printf("Error: Could not open input.txt\n");
+            total_students = -1;
+        }
+        else
+        {
+            fscanf(fp, "%d", &total_students);
+            fclose(fp);
+        }
+    }
+    MPI_Bcast(&total_students, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (total_students == -1)
+    {
+        MPI_Finalize();
+        return 0;
+    }
+
+    int n_per_proc = total_students / comm_sz;
+    int* sendcounts = malloc(comm_sz * sizeof(int));
+    int* displs = malloc(comm_sz * sizeof(int));
+    for (int i = 0; i < comm_sz; i++)
+    {
+        sendcounts[i] = n_per_proc;
+        displs[i] = i * n_per_proc;
+    }
+    sendcounts[comm_sz - 1] += total_students % comm_sz;
+
+    Student *all_students = NULL;
+    Student *local_students = malloc(sendcounts[my_rank] * sizeof(Student));
+    MPI_Datatype student_mpi_t;
+    int blocklengths[4] = {20, 1, 1, 1};
+    MPI_Datatype types[4] = {MPI_CHAR, MPI_INT, MPI_FLOAT, MPI_CHAR};
+    MPI_Aint displacements[4];
+    Student sample;
+    MPI_Aint base_addr, name_addr, roll_addr, marks_addr, grade_addr;
+    MPI_Get_address(&sample, &base_addr);
+    MPI_Get_address(sample.name, &name_addr);
+    MPI_Get_address(&sample.roll_no, &roll_addr);
+    MPI_Get_address(&sample.total_marks, &marks_addr);
+    MPI_Get_address(&sample.grade, &grade_addr);
+    displacements[0] = name_addr - base_addr;
+    displacements[1] = roll_addr - base_addr;
+    displacements[2] = marks_addr - base_addr;
+    displacements[3] = grade_addr - base_addr;
+    MPI_Type_create_struct(4, blocklengths, displacements, types, &student_mpi_t);
+    MPI_Type_commit(&student_mpi_t);
+
+    if (my_rank == 0)
+    {
+        all_students = malloc(total_students * sizeof(Student));
+        FILE* fp = fopen("in.txt", "r");
+        int dummy;
+        fscanf(fp, "%d", &dummy);
+        for (int i = 0; i < total_students; i++)
+            fscanf(fp, "%s %d %f", all_students[i].name, &all_students[i].roll_no, &all_students[i].total_marks);
+        fclose(fp);
+    }
+    MPI_Scatterv(all_students, sendcounts, displs, student_mpi_t, local_students, sendcounts[my_rank], student_mpi_t, 0, MPI_COMM_WORLD);
+    for (int i = 0; i < sendcounts[my_rank]; i++)
+    {
+        if (local_students[i].total_marks >= 85)
+            local_students[i].grade = 'O';
+        else if (local_students[i].total_marks >= 70)
+            local_students[i].grade = 'A';
+        else if (local_students[i].total_marks >= 50)
+            local_students[i].grade = 'B';
+        else
+            local_students[i].grade = 'F';
+    }
+    MPI_Gatherv(local_students, sendcounts[my_rank], student_mpi_t, all_students, sendcounts, displs, student_mpi_t, 0, MPI_COMM_WORLD);
+    if (my_rank == 0)
+    {
+        FILE* out = fopen("result.txt", "w");
+        for (int i = 0; i < total_students; i++)
+            fprintf(out, "Roll No.: %d   |    Name: %s    |    Grade: %c\n", all_students[i].roll_no, all_students[i].name, all_students[i].grade);
+        fclose(out);
+        printf("Processed %d students(Results in result.txt)\n", total_students);
+        free(all_students);
+    }
+
+    free(local_students);
+    free(sendcounts);
+    free(displs);
+    MPI_Type_free(&student_mpi_t);
+    MPI_Finalize();
+}
+
+
+[23bcs096@mepcolinux ex4a]$cat out
+III-B2@cil08:~/vicky/ex4$ cat result.txt
+Roll No.: 101   |    Name: Arjun    |    Grade: O
+Roll No.: 102   |    Name: Divya    |    Grade: A
+Roll No.: 103   |    Name: Kumar    |    Grade: B
+Roll No.: 104   |    Name: Meena    |    Grade: O
+Roll No.: 105   |    Name: Ravi    |    Grade: F
+Roll No.: 106   |    Name: Anu    |    Grade: A
+Roll No.: 107   |    Name: Suresh    |    Grade: A
+Roll No.: 108   |    Name: Priya    |    Grade: B
+Roll No.: 109   |    Name: Vijay    |    Grade: B
+Roll No.: 110   |    Name: Neha    |    Grade: O
+Roll No.: 111   |    Name: Rahul    |    Grade: F
+Roll No.: 112   |    Name: Kavya    |    Grade: A
+Roll No.: 113   |    Name: Tamil    |    Grade: O
+Roll No.: 114   |    Name: Vicky    |    Grade: O
+Roll No.: 115   |    Name: Yogesh    |    Grade: O
+Roll No.: 116   |    Name: Logesh    |    Grade: O
+Roll No.: 117   |    Name: sneha    |    Grade: O
+Roll No.: 118   |    Name: sai    |    Grade: O
+Roll No.: 119   |    Name: Siva    |    Grade: B
+Roll No.: 120   |    Name: Nandu    |    Grade: O
