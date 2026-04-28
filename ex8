@@ -1,0 +1,168 @@
+[?1034h[23bcs096@mepcolinux ex8]$cat normadd.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+int main()
+{
+    int *A, *B, *C;
+    int SIZE, i;
+    printf("\nEnter size of array: ");
+    scanf("%d", &SIZE);
+    A = (int*) malloc(SIZE * sizeof(int));
+    B = (int*) malloc(SIZE * sizeof(int));
+    C = (int*) malloc(SIZE * sizeof(int));
+
+    for(i = 0; i < SIZE; i++)
+    {
+        A[i] = i;
+        B[i] = i * 2;
+    }
+    printf("\n Adding of A and B arrays: ");
+    #pragma omp parallel for num_threads(4)
+    for(i = 0; i < SIZE; i++)
+    {
+        C[i] = A[i] + B[i];
+    }
+
+    printf("First 50 elements after adding:\n");
+    for(i = 0; i < SIZE && i < 50; i++)
+    {
+        printf("%d ", C[i]);
+    }
+    printf("\n\n");
+    free(A);
+    free(B);
+    free(C);
+    return 0;
+}
+
+[23bcs096@mepcolinux ex8]$./normadd
+
+Enter size of array: 10
+
+ Adding of A and B arrays: First 50 elements after adding:
+0 3 6 9 12 15 18 21 24 27
+
+[23bcs096@mepcolinux ex8]$cat scalaradd.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+int main()
+{
+    int *A;
+    int SIZE, i, constant;
+    printf("\nEnter size: ");
+    scanf("%d", &SIZE);
+    printf("Enter scalar value to add: ");
+    scanf("%d", &constant);
+    A = (int*) malloc(SIZE * sizeof(int));
+    for(i = 0; i < SIZE; i++)
+    {
+        A[i] = i;
+    }
+    #pragma omp parallel for num_threads(4)
+    for(i = 0; i < SIZE; i++)
+    {
+        A[i] = A[i] + constant;
+    }
+    printf("First 50 elements after adding the scalar value:\n");
+    for(i = 0; i < SIZE && i < 50; i++)
+    {
+        printf("%d ", A[i]);
+    }
+    printf("\n\n");
+    free(A);
+    return 0;
+}
+
+[23bcs096@mepcolinux ex8]$./scalar
+
+Enter size: 10
+Enter scalar value to add: 3
+First 50 elements after adding the scalar value:
+3 4 5 6 7 8 9 10 11 12
+
+[23bcs096@mepcolinux ex8]$ls
+ex8.prn  mat  mat.c  minn  minn.c  normadd  normadd.c  return  scalar  scalaradd.c
+[23bcs096@mepcolinux ex8]$cat minn.c
+#include <stdio.h>
+#include <omp.h>
+
+int main() {
+    int n, i;
+
+    printf("Enter the size: ");
+    scanf("%d", &n);
+
+    int a[n], prefix[n];
+
+    printf("Enter the elements: ");
+    for (i = 0; i < n; i++)
+        scanf("%d", &a[i]);
+
+    prefix[0] = a[0];
+    for (i = 1; i < n; i++)
+        prefix[i] = (prefix[i - 1] < a[i]) ? prefix[i - 1] : a[i];
+
+    printf("Prefix minimum array: ");
+    for (i = 0; i < n; i++)   // removed parallel here
+        printf("%d ", prefix[i]);
+
+    printf("\n");
+    return 0;
+}
+
+[23bcs096@mepcolinux ex8]$./minn
+Enter the size: 6
+Enter the elements: 1 5 3 7 3 9
+Prefix minimum array: 1 1 1 1 1 1
+[23bcs096@mepcolinux ex8]$ls
+ex8.prn  mat  mat.c  minn  minn.c  normadd  normadd.c  return  scalar  scalaradd.c
+[23bcs096@mepcolinux ex8]$cat mat.c
+#include <stdio.h>
+#include <omp.h>
+int main() {
+    int n, m, i, j;
+    printf("Enter rows and columns of a matrix: ");
+    scanf("%d %d", &n, &m);
+    int a[n][m];
+    for (i = 0; i < n; i++)
+        for (j = 0; j < m; j++)
+            scanf("%d", &a[i][j]);
+
+    #pragma omp parallel for
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < m / 2; j++) {
+            int temp = a[i][j];
+            a[i][j] = a[i][m - j - 1];
+            a[i][m - j - 1] = temp;
+        }
+    }
+
+    printf("----Mirror Matrix----:\n");
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < m; j++)
+            printf("%d ", a[i][j]);
+        printf("\n");
+    }
+    return 0;
+}
+
+[23bcs096@mepcolinux ex8]$./mat
+Enter rows and columns of a matrix: 3
+1 2 3
+4 5 6
+----Mirror Matrix----:
+2
+3
+4
+[23bcs096@mepcolinux ex8]$./mat
+Enter rows and columns of a matrix: 3 3
+1 2 3
+4 5 6
+7 8 9
+----Mirror Matrix----:
+3 2 1
+6 5 4
+9 8 7
