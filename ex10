@@ -1,0 +1,201 @@
+[?1034h[23bcs096@mepcolinux ex10]$cat token.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <omp.h>
+#define MAX_LINES 5
+#define MAX_LEN 200
+char queue[MAX_LINES][MAX_LEN];
+int front = 0, rear = 0;
+int total_tokens = 0;
+int producer_done = 0;
+omp_lock_t lock;
+int main()
+{
+    FILE *fp = fopen("data.txt", "r");
+    if (fp == NULL)
+    {
+        printf("File not found!\n");
+        return 1;
+    }
+    omp_set_num_threads(4);
+    omp_init_lock(&lock);
+    #pragma omp parallel
+    {
+        int id = omp_get_thread_num();
+        if (id % 2 == 0)  // Producer threads
+        {
+            int count = 0;
+            while (count < MAX_LINES/2)
+            {
+                char line[MAX_LEN] = "";
+                int got_line = 0;
+                #pragma omp critical
+                {
+                    if (fgets(line, MAX_LEN, fp) != NULL)
+                        got_line = 1;
+                    else
+                        count = MAX_LINES/2;  // no more lines, exit loop
+                }
+                if (got_line)
+                {
+                    omp_set_lock(&lock);
+                    if (rear < MAX_LINES)
+                    {
+                        strcpy(queue[rear++], line);
+                    }
+                    omp_unset_lock(&lock);
+                    count++;
+                }
+            }
+            #pragma omp atomic
+            producer_done++;
+        }
+        else  // Consumer threads
+        {
+            while (1)  // FIXED: loop until all lines are consumed, not a fixed count
+            {
+                char line[MAX_LEN] = "";
+                omp_set_lock(&lock);
+                if (front < rear)
+                    strcpy(line, queue[front++]);
+                omp_unset_lock(&lock);
+                if (strlen(line) > 0)
+                {
+                    char *saveptr;
+                    char *token = strtok_r(line, " \n", &saveptr);
+                    while (token != NULL)
+                    {
+                        #pragma omp critical
+                        printf("Thread %d Token: %s\n", id, token);
+                        #pragma omp atomic
+                        total_tokens++;
+                        token = strtok_r(NULL, " \n", &saveptr);
+                    }
+                }
+                else
+                {
+                    // exit only when producers are done AND queue is empty
+                    if (producer_done >= 2 && front >= rear)
+                        break;
+                }
+            }
+        }
+    }
+    printf("\nTotal Tokens = %d\n", total_tokens);
+    fclose(fp);
+    omp_destroy_lock(&lock);
+    return 0;
+}
+
+[23bcs096@mepcolinux ex10]$cat token
+Thread 3 Token: OpenMP
+Thread 1 Token: Producer
+Thread 1 Token: consumer
+Thread 3 Token: is
+Thread 3 Token: used
+Thread 3 Token: for
+Thread 3 Token: parallel
+Thread 3 Token: programming.
+Thread 1 Token: is
+Thread 1 Token: a
+Thread 1 Token: classic
+Thread 1 Token: problem.
+Thread 1 Token: Critical
+Thread 1 Token: section
+Thread 1 Token: prevents
+Thread 1 Token: race
+Thread 1 Token: conditions.
+Thread 1 Token: Atomic
+Thread 1 Token: ensures
+Thread 1 Token: safe
+Thread 1 Token: updates.
+
+Total Tokens = 21
+
+[23bcs096@mepcolinux ex10]$cat mean.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+#define N 20
+
+int queue[N];
+int front = 0, rear = 0;
+int data[N];
+double global_sum = 0;
+omp_lock_t lock;
+
+int main()
+{
+    omp_set_num_threads(4);
+    omp_init_lock(&lock);
+
+    #pragma omp parallel
+    {
+        int id = omp_get_thread_num();
+        if (id % 2 == 0)
+        {
+            for (int i = 0; i < N/2; i++)
+            {
+                int value = rand() % 10 + 1;
+                omp_set_lock(&lock);
+                queue[rear++] = value;
+                omp_unset_lock(&lock);
+            }
+        }
+        else
+        {
+            int count = 0;
+            while (count < N/2)
+            {
+                int value = -1;
+
+                omp_set_lock(&lock);
+                if (front < rear)
+                    value = queue[front++];
+                omp_unset_lock(&lock);
+
+                if (value != -1)
+                {
+                    int index = (id/2) * (N/2) + count;
+                    data[index] = value;
+                    #pragma omp atomic
+                    global_sum += value;
+                    count++;
+                }
+            }
+        }
+    }
+
+    printf("Elements:\n");
+    #pragma omp parallel for
+    for (int i = 0; i < N; i++)
+    {
+        #pragma omp critical
+        printf("%d ", data[i]);
+    }
+    printf("\n");
+
+    double mean = global_sum / N;
+    printf("Mean = %.2f\n", mean);
+
+    double variance = 0;
+    #pragma omp parallel for reduction(+:variance)
+    for (int i = 0; i < N; i++)
+    {
+        double diff = data[i] - mean;
+        variance += diff * diff;
+    }
+    variance = variance / N;
+    printf("Variance = %.2f\n", variance);
+
+    omp_destroy_lock(&lock);
+    return 0;
+}
+
+[23bcs096@mepcolinux ex10]$cat mean
+Elements:
+6 3 6 7 4 8 1 2 7 1 10 10 4 7 3 7 3 8 4 7
+Mean = 5.40
+Variance = 7.14
