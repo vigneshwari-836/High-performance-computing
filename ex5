@@ -1,0 +1,227 @@
+[?1034h[23bcs096@mepcolinux ex5]$cat hello.c
+#include<stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+int thread_count = 0;
+void* hello(void* rank);
+
+int main(int argc, char* argv[]) {
+   if (argc < 2) {
+       fprintf(stderr, "Usage: %s <number of threads>\n", argv[0]);
+       return 1;
+   }
+   long t;
+   pthread_t* thread_handles;
+   thread_count = strtol(argv[1], NULL, 10);
+   thread_handles = malloc(thread_count * sizeof(pthread_t));
+   printf("HELLO FROM MAIN THREAD\n");
+   for (t = 0; t < thread_count; t++) {
+      pthread_create(&thread_handles[t], NULL, hello, (void*)t);
+   }
+  // printf("HELLO FROM MAIN THREAD\n");
+
+   for (t = 0; t < thread_count; t++) {
+      pthread_join(thread_handles[t], NULL);
+   }
+
+   free(thread_handles);
+   return 0;
+}
+void* hello(void* rank) {
+   long my_rank = (long)rank;
+   printf("Hello from thread %ld of %d\n", my_rank, thread_count);
+   return NULL;
+}
+[23bcs096@mepcolinux ex5]$./h 6
+HELLO FROM MAIN THREAD
+Hello from thread 2 of 6
+Hello from thread 1 of 6
+Hello from thread 0 of 6
+Hello from thread 3 of 6
+Hello from thread 4 of 6
+Hello from thread 5 of 6
+[23bcs096@mepcolinux ex5]$cat mat.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <time.h>
+
+int **A, **B, **C, **D;
+int n;
+
+void randommatrix(int **mat) {
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < n; j++) {
+            mat[i][j] = rand() % 10;
+        }
+    }
+    printf("Matrix \n");
+    for(int i=0;i<n;i++)
+    {
+       for(int j=0;j<n;j++)
+       {
+          printf("%d ",mat[i][j]);
+       }
+       printf("\n");
+    }
+}
+
+void* add_matrix(void* arg) {
+    D =(int**) malloc(n * sizeof(int*));
+    for(int i = 0; i < n; i++) {
+        D[i] =(int*) malloc(n * sizeof(int));
+        for(int j = 0; j < n; j++) {
+            D[i][j] = A[i][j] + B[i][j];
+        }
+    }
+    printf("\n--- Addition Result ---\n");
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < n; j++) printf("%d ", D[i][j]);
+        printf("\n");
+    }
+    return NULL;
+}
+
+void* mul_matrix(void* arg) {
+    C = (int**)malloc(n * sizeof(int*));
+    for(int i = 0; i < n; i++) {
+        C[i] = (int*) malloc(n * sizeof(int));
+        for(int j = 0; j < n; j++) {
+            // Note: This logic is still addition in your snippet,
+            // changed it slightly but kept your structure.
+            C[i][j] = A[i][j] * B[i][j];
+        }
+    }
+    printf("\n--- Multiplication Result ---\n");
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < n; j++) printf("%d ", C[i][j]);
+        printf("\n");
+    }
+    return NULL;
+}
+
+int main() {
+    pthread_t thread1, thread2;
+    printf("Enter the size of square matrix: ");
+    if(scanf("%d", &n) != 1) return 1;
+
+    srand(time(NULL));
+
+    // Proper Allocation
+    A =(int**) malloc(n * sizeof(int*));
+    B = (int**)malloc(n * sizeof(int*));
+    for(int i = 0; i < n; i++) {
+        A[i] = (int*)malloc(n * sizeof(int));
+        B[i] = (int*)malloc(n * sizeof(int));
+    }
+
+    randommatrix(A);
+    randommatrix(B);
+
+    pthread_create(&thread1, NULL, add_matrix, NULL);
+    pthread_create(&thread2, NULL, mul_matrix, NULL);
+
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
+
+    return 0;
+}
+
+[23bcs096@mepcolinux ex5]$g++ mat.c -o mat -lpthread
+[23bcs096@mepcolinux ex5]$./mat
+Enter the size of square matrix: 3
+Matrix
+3 5 1
+5 2 1
+4 5 9
+Matrix
+6 6 0
+1 8 9
+5 0 9
+
+--- Addition Result ---
+9 11 1
+6 10 10
+9 5 18
+
+--- Multiplication Result ---
+18 30 0
+5 16 9
+20 0 81
+[23bcs096@mepcolinux ex5]$ls
+a.out  arr  arr.c  ex5.prn  h  hello.c  mat  mat.c  matrix.c
+[23bcs096@mepcolinux ex5]$cat arr.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+int *arr;
+int *partial_sum;
+int n, num;
+typedef struct {
+   int thread_id;
+   int start;
+   int end;
+} threadData;
+void* compute(void* arg) {
+   threadData* data = (threadData*)arg;
+   int local = 0,i;
+   for(int i = data->start; i < data->end; i++) {
+      local += arr[i];
+   }
+   partial_sum[data->thread_id] = local;
+   return NULL;
+}
+int main(int argc, char* argv[]) {
+   if (argc < 2) {
+      printf("Usage: %s <number_of_threads>\n", argv[0]);
+      return 1;
+   }
+   int i;
+   num = strtol(argv[1], NULL, 10);
+   printf("Enter the array size: ");
+   scanf("%d", &n);
+   pthread_t *thread_handles = (pthread_t*)malloc(num * sizeof(pthread_t));
+   threadData *data = (threadData*)malloc(num * sizeof(threadData));
+   arr = (int*)malloc(n * sizeof(int));
+   partial_sum = (int*)malloc(num * sizeof(int));
+
+   for(int i = 0; i < n; i++) {
+      arr[i] = rand() % 100;
+   }
+   printf("\nArray elements:");
+   for(i=0;i<n;i++){
+      printf("%d ",arr[i]);
+   }
+   int ch = n / num;
+   for(int i = 0; i < num; i++) {
+      data[i].thread_id = i;
+      data[i].start = i * ch;
+      if(i == num - 1) {
+         data[i].end = n;
+      } else {
+         data[i].end = (i + 1) * ch;
+      }
+      pthread_create(&thread_handles[i], NULL, compute, &data[i]);
+   }
+   for(int i = 0; i < num; i++) {
+      pthread_join(thread_handles[i], NULL);
+   }
+   int total = 0;
+   for(int i = 0; i < num; i++) {
+      total += partial_sum[i];
+   }
+   printf("Total sum: %d\n", total);
+   free(arr);
+   free(partial_sum);
+   free(thread_handles);
+   free(data);
+
+   return 0;
+}
+
+
+[23bcs096@mepcolinux ex5]$./arr 6
+Enter the array size: 10
+
+Array elements:83 86 77 15 93 35 86 92 49 21 Total sum: 637
