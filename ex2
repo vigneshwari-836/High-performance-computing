@@ -1,0 +1,146 @@
+[?1034h[23bcs096@mepcolinux ex2]$cat greet.c
+#include<stdio.h>
+#include<string.h>
+#include<mpi.h>
+
+const int MAX_STRINGS=100;
+
+int main()
+{
+        char msg[100];
+        int comm_size;
+        int my_rank;
+        int i;
+        MPI_Init(NULL,NULL);
+        MPI_Comm_size(MPI_COMM_WORLD,&comm_size);
+        MPI_Comm_rank(MPI_COMM_WORLD,&my_rank);
+
+        if(my_rank!=0)
+        {
+                sprintf(msg,"\nHello from process %d\n",my_rank);
+                MPI_Send(msg,strlen(msg)+1,MPI_CHAR,0,0,MPI_COMM_WORLD);
+        }
+        else
+        {
+                printf("Hello from process %d",my_rank);
+                for(i=1;i<comm_size;i++)
+                {
+                        MPI_Recv(msg,100,MPI_CHAR,i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+                        printf("%s",msg);
+                }
+        }
+        MPI_Finalize();
+
+}
+
+[23bcs096@mepcolinux ex2]$cat greetout
+ada@ada:~$ mpicc greet.c
+ada@ada:~$ mpiexec --oversubscribe -n 10 ./a.out
+Hello from process 0
+Hello from process 1
+
+Hello from process 2
+
+Hello from process 3
+
+Hello from process 4
+
+Hello from process 5
+
+Hello from process 6
+
+Hello from process 7
+
+Hello from process 8
+
+Hello from process 9
+ada@ada:~$
+
+[23bcs096@mepcolinux ex2]$cat pg2.c
+#include<stdio.h>
+#include<string.h>
+#include<mpi.h>
+#include<ctype.h>
+int main()
+{
+        char str[100];
+        char in_str[100];
+        int comm_size;
+        int my_rank;
+        MPI_Init(NULL,NULL);
+        MPI_Comm_size(MPI_COMM_WORLD,&comm_size);
+        MPI_Comm_rank(MPI_COMM_WORLD,&my_rank);
+
+        MPI_Status status;
+        if(my_rank==1)
+        {
+                sprintf(str,"hello");
+                MPI_Send(str,strlen(str)+1,MPI_CHAR,0,1,MPI_COMM_WORLD);
+        }
+        else if(my_rank==2)
+        {
+                sprintf(str,"malayalams");
+                MPI_Send(str,strlen(str)+1,MPI_CHAR,0,2,MPI_COMM_WORLD);
+        }
+        else if(my_rank==3)
+        {
+                sprintf(str,"island");
+                MPI_Send(str,strlen(str)+1,MPI_CHAR,0,1,MPI_COMM_WORLD);
+        }
+        else if(my_rank==4)
+        {
+                sprintf(str,"level");
+                MPI_Send(str,strlen(str)+1,MPI_CHAR,0,2,MPI_COMM_WORLD);
+        }
+        else
+        {
+                int i,j;
+                printf("\nMaster process :%d\n",my_rank);
+                for(i=1;i<comm_size;i++)
+                {
+                        MPI_Recv(str,100,MPI_CHAR,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&status);
+                        if(status.MPI_TAG==1)
+                        {
+                                for(j=0;str[j]!='\0';j++)
+                                {
+                                        str[j]=toupper(str[j]);
+                                }
+                                printf("\nResult:%s from process %d\n",str,status.MPI_SOURCE);
+                        }
+                        else if(status.MPI_TAG==2)
+                        {
+                                for(j=strlen(str)-1;j>=0;j--)
+                                {
+                                        in_str[j]=str[j];
+                                }
+                                if(strcmp(str,in_str)==0)
+                                {
+                                        printf("\nResult:%s Palindrome from process %d\n",str,status.MPI_SOURCE);
+                                }
+                                else
+                                {
+                                        printf("\nResult:%s Not palindrome from process %d\n",str,status.MPI_SOURCE);
+                                }
+                        }
+                }
+        }
+        MPI_Finalize();
+
+}
+
+
+
+[23bcs096@mepcolinux ex2]$cat pg2out
+ada@ada:~$ mpirun -n 4 -bind-to core --report-bindings  ./a.out
+[ada:05382] MCW rank 2 bound to socket 0[core 2[hwt 0]]: [././B/.]
+[ada:05382] MCW rank 3 bound to socket 0[core 3[hwt 0]]: [./././B]
+[ada:05382] MCW rank 0 bound to socket 0[core 0[hwt 0]]: [B/././.]
+[ada:05382] MCW rank 1 bound to socket 0[core 1[hwt 0]]: [./B/./.]
+
+Master process :0
+
+Result:HELLO from process 1
+
+Result:madam Palindrome from process 2
+
+Result:HIGH from process 3
